@@ -41,6 +41,8 @@ button.danger{background:var(--danger);}
 .pinfo span{display:block;font-size:12px;color:var(--muted);}
 .pnum{display:inline-block;background:var(--accent);color:#fff;font-size:11px;border-radius:5px;padding:1px 6px;margin-right:5px;}
 .stocklow{color:var(--warn);font-weight:600;}
+.stockcritical{color:var(--danger);font-weight:700;}
+.catheader{font-size:13px;font-weight:700;color:var(--accent);margin:12px 0 4px;text-transform:none;}
 .stat{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #8882;font-size:14px;}
 .stat:last-child{border:none;}
 .search{margin-bottom:10px;}
@@ -60,16 +62,14 @@ button.danger{background:var(--danger);}
     <div class="small" id="imgSizeNote"></div>
 
     <label>Product Number</label>
-    <input id="pnumber" type ="number" placeholder="Auto-generated, or type your own">
+    <input id="pnumber" placeholder="Auto-generated, or type your own">
 
     <label>Product Name</label>
     <input id="pname" placeholder="e.g. Steel Thali">
 
     <label>Category</label>
-    <select id="pcat">
-      <option>Steel</option><option>Plastic</option><option>Copper</option>
-      <option>Kitchen</option><option>Other</option>
-    </select>
+    <input id="pcat" list="catList" placeholder="Type category, e.g. Plastic" autocomplete="off">
+    <datalist id="catList"></datalist>
 
     <div class="row">
       <div><label>Size</label><input id="psize" placeholder="e.g. 10 inch"></div>
@@ -103,6 +103,14 @@ button.danger{background:var(--danger);}
 let products = [], sales = [];
 try{ products = JSON.parse(localStorage.getItem('vartan_products')||'[]'); }catch(e){ products=[]; }
 try{ sales = JSON.parse(localStorage.getItem('vartan_sales')||'[]'); }catch(e){ sales=[]; }
+
+const seedCategories = ['Steel','Plastic','Copper','Kitchen','Other'];
+function refreshCatList(){
+  const used = products.map(p=>p.cat);
+  const all = Array.from(new Set([...seedCategories, ...used])).sort();
+  document.getElementById('catList').innerHTML = all.map(c=>`<option value="${c}">`).join('');
+}
+refreshCatList();
 
 function nextNumber(){
   if(products.length===0) return '1001';
@@ -175,7 +183,7 @@ document.getElementById('imgInput').addEventListener('change', function(e){
 function addProduct(){
   const number = document.getElementById('pnumber').value.trim() || nextNumber();
   const name = document.getElementById('pname').value.trim();
-  const cat = document.getElementById('pcat').value;
+  const cat = document.getElementById('pcat').value.trim() || 'Other';
   const size = document.getElementById('psize').value.trim();
   const price = parseFloat(document.getElementById('pprice').value)||0;
   const stock = parseInt(document.getElementById('pstock').value)||0;
@@ -187,8 +195,10 @@ function addProduct(){
   products.push({id: Date.now(), number, name, cat, size, price, stock, img});
   if(!save()) { products.pop(); return; }
 
+  refreshCatList();
   document.getElementById('pnumber').value = nextNumber();
   document.getElementById('pname').value='';
+  document.getElementById('pcat').value='';
   document.getElementById('psize').value='';
   document.getElementById('pprice').value='';
   document.getElementById('pstock').value='';
@@ -208,19 +218,26 @@ function renderProducts(){
     String(p.number).toLowerCase().includes(q)
   );
   if(filtered.length===0){ list.innerHTML = '<div class="empty">No products found. Add one from the "Add" tab.</div>'; return; }
-  list.innerHTML = filtered.map(p => `
-    <div class="pitem">
-      <img src="${p.img||''}" onerror="this.style.background='#8882'">
-      <div class="pinfo">
-        <span><span class="pnum">#${p.number}</span>${p.name}</span>
-        <span>${p.cat} · ${p.size||'-'} · ₹${p.price}</span>
-        <span class="${p.stock<5?'stocklow':''}">Stock: ${p.stock}</span>
+
+  const groups = {};
+  filtered.forEach(p=>{ (groups[p.cat] = groups[p.cat]||[]).push(p); });
+
+  list.innerHTML = Object.keys(groups).sort().map(cat => `
+    <div class="catheader">${cat} (${groups[cat].length})</div>
+    ${groups[cat].map(p => `
+      <div class="pitem">
+        <img src="${p.img||''}" onerror="this.style.background='#8882'">
+        <div class="pinfo">
+          <span><span class="pnum">#${p.number}</span>${p.name}</span>
+          <span>${p.size||'-'} · ₹${p.price}</span>
+          <span class="${p.stock<=2?'stockcritical':(p.stock<5?'stocklow':'')}">Stock: ${p.stock}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;">
+          <button onclick="sellProduct(${p.id})">Sell</button>
+          <button class="danger" onclick="deleteProduct(${p.id})">Del</button>
+        </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:5px;">
-        <button onclick="sellProduct(${p.id})">Sell</button>
-        <button class="danger" onclick="deleteProduct(${p.id})">Del</button>
-      </div>
-    </div>
+    `).join('')}
   `).join('');
 }
 
@@ -263,7 +280,7 @@ function renderStats(){
   lowBox.innerHTML = low.length ? low.map(p=>`
     <div class="pitem">
       <img src="${p.img||''}">
-      <div class="pinfo"><span><span class="pnum">#${p.number}</span>${p.name}</span><span class="stocklow">Only ${p.stock} left</span></div>
+      <div class="pinfo"><span><span class="pnum">#${p.number}</span>${p.name}</span><span class="${p.stock<=2?'stockcritical':'stocklow'}">Only ${p.stock} left</span></div>
     </div>`).join('') : '<div class="empty">All stock levels look fine.</div>';
 }
 
@@ -271,4 +288,3 @@ renderProducts();
 </script>
 </body>
 </html>
-
