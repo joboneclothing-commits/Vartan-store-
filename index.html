@@ -1,1 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vartan Store</title>
+<style>
+:root{
+  --accent:#1e6f5c; --bg:#f7f6f2; --card:#ffffff; --text:#222; --muted:#777; --danger:#b3413d; --warn:#c98a1f;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#14171a; --card:#1f2327; --text:#eee; --muted:#9aa0a6; }
+}
+:root[data-theme="dark"]{ --bg:#14171a; --card:#1f2327; --text:#eee; --muted:#9aa0a6; }
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
+body{max-width:520px;margin:0 auto;padding:10px 12px 90px;}
+h1{font-size:19px;margin:10px 0 4px;}
+h2{font-size:15px;margin:14px 0 6px;color:var(--muted);}
+.card{background:var(--card);border-radius:10px;padding:12px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);}
+label{display:block;font-size:13px;color:var(--muted);margin:8px 0 3px;}
+input,select{width:100%;padding:9px;border:1px solid #ccc4;border-radius:8px;background:var(--bg);color:var(--text);font-size:15px;}
+button{padding:10px 14px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-size:14px;font-weight:600;}
+button.secondary{background:#8884;color:var(--text);}
+button.danger{background:var(--danger);}
+.row{display:flex;gap:8px;}
+.row>*{flex:1;}
+.tabs{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);padding:8px 10px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));box-shadow:0 -2px 6px rgba(0,0,0,.1);max-width:520px;margin:0 auto;}
+.tabs button{flex:1;background:none;color:var(--muted);font-weight:600;font-size:13px;margin:0 3px;}
+.tabs button.active{background:var(--accent);color:#fff;}
+.tab-content{display:none;}
+.tab-content.active{display:block;}
+.plist{display:flex;flex-direction:column;gap:8px;}
+.pitem{display:flex;gap:10px;background:var(--card);border-radius:10px;padding:10px;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,.08);}
+.pitem img{width:56px;height:56px;border-radius:8px;object-fit:cover;background:#8882;flex-shrink:0;}
+.pinfo{flex:1;min-width:0;}
+.pinfo b{font-size:14px;}
+.pinfo span{display:block;font-size:12px;color:var(--muted);}
+.pnum{display:inline-block;background:var(--accent);color:#fff;font-size:11px;border-radius:5px;padding:1px 6px;margin-right:5px;}
+.stocklow{color:var(--warn);font-weight:600;}
+.stat{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #8882;font-size:14px;}
+.stat:last-child{border:none;}
+.search{margin-bottom:10px;}
+.empty{color:var(--muted);text-align:center;padding:20px 0;font-size:14px;}
+.small{font-size:12px;color:var(--muted);margin-top:4px;}
+</style>
+</head>
+<body>
+
+<h1>Vartan Store</h1>
+
+<div id="tab-add" class="tab-content active">
+  <div class="card">
+    <label>Product Photo</label>
+    <input type="file" id="imgInput" accept="image/*" capture="environment">
+    <img id="imgPreview" style="max-width:100%;border-radius:8px;margin-top:6px;display:none;">
+    <div class="small" id="imgSizeNote"></div>
+
+    <label>Product Number</label>
+    <input id="pnumber" type ="number" placeholder="Auto-generated, or type your own">
+
+    <label>Product Name</label>
+    <input id="pname" placeholder="e.g. Steel Thali">
+
+    <label>Category</label>
+    <select id="pcat">
+      <option>Steel</option><option>Plastic</option><option>Copper</option>
+      <option>Kitchen</option><option>Other</option>
+    </select>
+
+    <div class="row">
+      <div><label>Size</label><input id="psize" placeholder="e.g. 10 inch"></div>
+      <div><label>Price (₹)</label><input id="pprice" type="number" placeholder="0"></div>
+    </div>
+    <label>Stock Quantity</label>
+    <input id="pstock" type="number" placeholder="0">
+
+    <div style="margin-top:12px;"><button onclick="addProduct()" style="width:100%;">Add Product</button></div>
+  </div>
+</div>
+
+<div id="tab-list" class="tab-content">
+  <input class="search" id="searchBox" placeholder="Search by number / name / category" oninput="renderProducts()">
+  <div class="plist" id="plist"></div>
+</div>
+
+<div id="tab-stats" class="tab-content">
+  <div class="card" id="statsBox"></div>
+  <h2>Low Stock (below 5)</h2>
+  <div class="plist" id="lowstock"></div>
+</div>
+
+<div class="tabs">
+  <button id="btn-add" class="active" onclick="showTab('add')">Add</button>
+  <button id="btn-list" onclick="showTab('list')">Products</button>
+  <button id="btn-stats" onclick="showTab('stats')">Analysis</button>
+</div>
+
+<script>
+let products = [], sales = [];
+try{ products = JSON.parse(localStorage.getItem('vartan_products')||'[]'); }catch(e){ products=[]; }
+try{ sales = JSON.parse(localStorage.getItem('vartan_sales')||'[]'); }catch(e){ sales=[]; }
+
+function nextNumber(){
+  if(products.length===0) return '1001';
+  const nums = products.map(p=>parseInt(p.number)).filter(n=>!isNaN(n));
+  return nums.length ? String(Math.max(...nums)+1) : String(1001+products.length);
+}
+document.getElementById('pnumber').value = nextNumber();
+
+function save(){
+  try{
+    localStorage.setItem('vartan_products', JSON.stringify(products));
+    localStorage.setItem('vartan_sales', JSON.stringify(sales));
+    return true;
+  }catch(e){
+    if(e.name === 'SecurityError' || /sandboxed/i.test(e.message)){
+      alert('This page is running inside a restricted preview window, so it cannot save data here. Open this file directly (e.g. from your GitHub Pages link, or by opening the .html file in your phone browser) and it will save normally.');
+    } else if(e.name === 'QuotaExceededError'){
+      alert('Storage is full. Try deleting an old product photo, or export/backup and clear some data.');
+    } else {
+      alert('Could not save data. (Error: ' + e.message + ')');
+    }
+    return false;
+  }
+}
+
+function showTab(t){
+  document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));
+  document.getElementById('tab-'+t).classList.add('active');
+  document.getElementById('btn-'+t).classList.add('active');
+  if(t==='list') renderProducts();
+  if(t==='stats') renderStats();
+}
+
+// Compress image with canvas before storing, to avoid filling up storage
+function compressImage(file, maxDim, quality){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = function(ev){
+      const img = new Image();
+      img.onload = function(){
+        let w = img.width, h = img.height;
+        if(w > h && w > maxDim){ h = Math.round(h * maxDim / w); w = maxDim; }
+        else if(h > maxDim){ w = Math.round(w * maxDim / h); h = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = ev.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+document.getElementById('imgInput').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  compressImage(file, 400, 0.6).then(dataUrl=>{
+    document.getElementById('imgPreview').src = dataUrl;
+    document.getElementById('imgPreview').style.display='block';
+    const kb = Math.round(dataUrl.length * 0.75 / 1024);
+    document.getElementById('imgSizeNote').textContent = 'Compressed photo size: ~' + kb + ' KB';
+  }).catch(()=>{ alert('Could not read that image, try another one.'); });
+});
+
+function addProduct(){
+  const number = document.getElementById('pnumber').value.trim() || nextNumber();
+  const name = document.getElementById('pname').value.trim();
+  const cat = document.getElementById('pcat').value;
+  const size = document.getElementById('psize').value.trim();
+  const price = parseFloat(document.getElementById('pprice').value)||0;
+  const stock = parseInt(document.getElementById('pstock').value)||0;
+  const img = document.getElementById('imgPreview').style.display!=='none' ? document.getElementById('imgPreview').src : '';
+
+  if(!name){ alert('Please enter a product name'); return; }
+  if(products.some(p=>p.number===number)){ alert('This product number already exists. Use a different number.'); return; }
+
+  products.push({id: Date.now(), number, name, cat, size, price, stock, img});
+  if(!save()) { products.pop(); return; }
+
+  document.getElementById('pnumber').value = nextNumber();
+  document.getElementById('pname').value='';
+  document.getElementById('psize').value='';
+  document.getElementById('pprice').value='';
+  document.getElementById('pstock').value='';
+  document.getElementById('imgInput').value='';
+  document.getElementById('imgPreview').style.display='none';
+  document.getElementById('imgSizeNote').textContent='';
+  alert('Product added successfully!');
+  showTab('list');
+}
+
+function renderProducts(){
+  const q = (document.getElementById('searchBox').value||'').toLowerCase();
+  const list = document.getElementById('plist');
+  const filtered = products.filter(p =>
+    p.name.toLowerCase().includes(q) ||
+    p.cat.toLowerCase().includes(q) ||
+    String(p.number).toLowerCase().includes(q)
+  );
+  if(filtered.length===0){ list.innerHTML = '<div class="empty">No products found. Add one from the "Add" tab.</div>'; return; }
+  list.innerHTML = filtered.map(p => `
+    <div class="pitem">
+      <img src="${p.img||''}" onerror="this.style.background='#8882'">
+      <div class="pinfo">
+        <span><span class="pnum">#${p.number}</span>${p.name}</span>
+        <span>${p.cat} · ${p.size||'-'} · ₹${p.price}</span>
+        <span class="${p.stock<5?'stocklow':''}">Stock: ${p.stock}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <button onclick="sellProduct(${p.id})">Sell</button>
+        <button class="danger" onclick="deleteProduct(${p.id})">Del</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function sellProduct(id){
+  const p = products.find(x=>x.id===id);
+  if(!p) return;
+  const qty = parseInt(prompt('"' + p.name + '" (#' + p.number + ') — quantity to sell? (Stock: ' + p.stock + ')', '1'));
+  if(!qty || qty<=0) return;
+  if(qty > p.stock){ alert('Not enough stock!'); return; }
+  p.stock -= qty;
+  sales.push({id: Date.now(), pid: p.id, number: p.number, name: p.name, qty, price: p.price, total: qty*p.price, date: new Date().toLocaleString('en-IN')});
+  save();
+  renderProducts();
+  alert(qty + ' x ' + p.name + ' sold — Rs.' + (qty*p.price));
+}
+
+function deleteProduct(id){
+  if(!confirm('Delete this product?')) return;
+  products = products.filter(x=>x.id!==id);
+  save();
+  renderProducts();
+}
+
+function renderStats(){
+  const totalSaleAmt = sales.reduce((s,x)=>s+x.total,0);
+  const totalItemsSold = sales.reduce((s,x)=>s+x.qty,0);
+  const totalStockValue = products.reduce((s,p)=>s+p.price*p.stock,0);
+  const catCount = {};
+  products.forEach(p=>{ catCount[p.cat] = (catCount[p.cat]||0) + p.stock; });
+
+  document.getElementById('statsBox').innerHTML = `
+    <div class="stat"><span>Total Sale Amount</span><b>Rs.${totalSaleAmt}</b></div>
+    <div class="stat"><span>Total Items Sold</span><b>${totalItemsSold}</b></div>
+    <div class="stat"><span>Current Stock Value</span><b>Rs.${totalStockValue}</b></div>
+    ${Object.entries(catCount).map(([c,n])=>`<div class="stat"><span>${c}</span><b>${n} pcs</b></div>`).join('')}
+  `;
+
+  const low = products.filter(p=>p.stock<5);
+  const lowBox = document.getElementById('lowstock');
+  lowBox.innerHTML = low.length ? low.map(p=>`
+    <div class="pitem">
+      <img src="${p.img||''}">
+      <div class="pinfo"><span><span class="pnum">#${p.number}</span>${p.name}</span><span class="stocklow">Only ${p.stock} left</span></div>
+    </div>`).join('') : '<div class="empty">All stock levels look fine.</div>';
+}
+
+renderProducts();
+</script>
+</body>
+</html>
 
